@@ -41,7 +41,7 @@ python cache-bridge.py --host 0.0.0.0 --port 8765
 
 ### 2. 打开 App
 
-把 `app-debug.apk` 安装到 Android 手机，填入 DeepSeek API Key 并保存。缓存统计源可以保持默认；如果自动发现失败，手动填写：
+先用 Android Studio 构建 `app-debug.apk`，再安装到 Android 手机；如果后续发布了构建产物，也可以从 Releases 下载。打开后填入 DeepSeek API Key 并保存。缓存统计源可以保持默认；如果自动发现失败，手动填写：
 
 ```text
 http://电脑局域网IP:8765/cache?scope=today
