@@ -14,7 +14,8 @@ local.properties
 cache-bridge.log
 diagnostic.log
 
-deepseek-*-doc.html
+*-doc.html
+kimi-balance.md
 token-monitor-*.png
 encrypt-test.png
 key-filled.png

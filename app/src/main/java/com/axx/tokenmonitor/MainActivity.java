@@ -2,6 +2,7 @@ package com.axx.tokenmonitor;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.SharedPreferences;
@@ -9,6 +10,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Path;
@@ -21,6 +23,7 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
+import android.view.Window;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -54,7 +57,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String APP_VERSION = "1.5";
+    private static final String APP_VERSION = "1.6";
     private static final String API = "https://api.deepseek.com/user/balance";
     private static final String CACHE_URL = "http://127.0.0.1:8765/cache?scope=today";
     private static final String KEY_ALIAS = "token_monitor_api_key_v1";
@@ -801,12 +804,106 @@ public class MainActivity extends Activity {
 
     private void showProviderPicker() {
         final String[] providers = {"DeepSeek", "Kimi", "GPT", "Claude", "Gemini"};
-        new AlertDialog.Builder(this)
-                .setTitle("选择 API 供应商")
-                .setItems(providers, (dialog, which) ->
-                        providerValue.setText(providers[which]))
-                .setNegativeButton("取消", null)
-                .show();
+        final String[] descriptions = {
+                "余额查询  ·  Codex 缓存统计",
+                "余额查询  ·  Codex 缓存统计",
+                "连接检查  ·  模型列表",
+                "连接检查  ·  模型列表",
+                "连接检查  ·  模型列表"
+        };
+        final String[] badges = {"DS", "K", "GPT", "C", "G"};
+        final String[] colors = {"#F6C56B", "#F06A5B", "#B7A1FF", "#E6A16B", "#7CB7FF"};
+        final String current = providerValue.getText().toString();
+
+        Dialog dialog = new Dialog(this);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(20), dp(19), dp(20), dp(16));
+        panel.setBackground(round("#221E27", "#66F6C56B", 1, 22));
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text("选择供应商", 20, "#FFF1DE");
+        head.addView(title, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        TextView close = text("取消", 12, "#8A7A72");
+        close.setPadding(dp(8), dp(7), 0, dp(7));
+        close.setOnClickListener(v -> dialog.dismiss());
+        head.addView(close);
+        panel.addView(head);
+
+        TextView subtitle = text("每个密钥独立绑定，可用能力一目了然", 11, "#8A7A72");
+        subtitle.setPadding(0, dp(5), 0, dp(14));
+        panel.addView(subtitle);
+
+        for (int i = 0; i < providers.length; i++) {
+            String name = providers[i];
+            boolean selected = name.equals(current);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(13), dp(11), dp(13), dp(11));
+            row.setBackground(round(
+                    selected ? "#2B242D" : "#1E1A21",
+                    selected ? "#66F6C56B" : "#22F6C56B", 1, 17));
+
+            TextView badge = text(badges[i], 10, "#17141B");
+            badge.setGravity(Gravity.CENTER);
+            badge.setSingleLine(true);
+            badge.setBackground(round(colors[i], null, 0, 12));
+            row.addView(badge, new LinearLayout.LayoutParams(dp(40), dp(36)));
+
+            LinearLayout info = new LinearLayout(this);
+            info.setOrientation(LinearLayout.VERTICAL);
+            info.setPadding(dp(12), 0, dp(8), 0);
+            TextView providerName = text(name, 14, "#FFF1DE");
+            info.addView(providerName);
+            TextView description = text(descriptions[i], 10, "#8A7A72");
+            description.setPadding(0, dp(4), 0, 0);
+            info.addView(description);
+            row.addView(info, new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+            TextView state = text(selected ? "✓" : "›", 17,
+                    selected ? "#F6C56B" : "#6E6059");
+            state.setGravity(Gravity.CENTER);
+            row.addView(state, new LinearLayout.LayoutParams(
+                    dp(26), LinearLayout.LayoutParams.WRAP_CONTENT));
+
+            row.setOnClickListener(v -> {
+                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                providerValue.setText(name);
+                dialog.dismiss();
+            });
+            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT);
+            rowLp.bottomMargin = dp(8);
+            panel.addView(row, rowLp);
+        }
+
+        TextView note = text("普通 API Key 不提供余额时，App 会明确显示“不支持”。",
+                10, "#6E6059");
+        note.setPadding(dp(2), dp(5), 0, dp(3));
+        panel.addView(note);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.addView(panel);
+        dialog.setContentView(scroll);
+        dialog.setCanceledOnTouchOutside(true);
+        dialog.show();
+
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.setDimAmount(0.72f);
+            window.setGravity(Gravity.CENTER);
+            int width = Math.min(dp(520),
+                    Math.round(getResources().getDisplayMetrics().widthPixels * 0.88f));
+            window.setLayout(width, LinearLayout.LayoutParams.WRAP_CONTENT);
+        }
     }
 
     private SecretKey getOrCreateSecretKey() throws Exception {
