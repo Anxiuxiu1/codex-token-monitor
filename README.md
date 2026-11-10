@@ -14,6 +14,7 @@
 - 显示 Codex 今日缓存命中率、命中 token 和请求次数
 - 手机端自动回退地址，并支持局域网广播发现电脑
 - API Key 使用 Android Keystore AES-GCM 加密保存
+- 支持保存多个 API Key，可为每个 Key 添加备注并切换
 - 本机桥接只读取 token 计数，不读取聊天正文
 
 ## 架构

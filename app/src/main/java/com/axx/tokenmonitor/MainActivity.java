@@ -1,6 +1,7 @@
 package com.axx.tokenmonitor;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.SharedPreferences;
@@ -53,7 +54,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String APP_VERSION = "1.3";
+    private static final String APP_VERSION = "1.4";
     private static final String API = "https://api.deepseek.com/user/balance";
     private static final String CACHE_URL = "http://127.0.0.1:8765/cache?scope=today";
     private static final String KEY_ALIAS = "token_monitor_api_key_v1";
@@ -71,9 +72,11 @@ public class MainActivity extends Activity {
     private MixBar mixBar;
     private Ring cacheRing;
     private EditText keyInput;
+    private EditText keyNoteInput;
     private EditText cacheUrlInput;
     private String cacheLanUrl = "";
     private File diagFile;
+    private boolean creatingKey;
     private Runnable tick;
     private double lastTopped, lastGranted;
 
@@ -309,6 +312,42 @@ public class MainActivity extends Activity {
         keyLabel.setPadding(0, dp(7), 0, dp(11));
         root.addView(keyLabel);
 
+        LinearLayout keyTools = new LinearLayout(this);
+        keyTools.setOrientation(LinearLayout.HORIZONTAL);
+        keyTools.setPadding(0, 0, 0, dp(10));
+        TextView switchKey = pill("切换密钥", "#1E1A21", "#F6C56B");
+        switchKey.setBackground(round("#1E1A21", "#66F6C56B", 1, 16));
+        switchKey.setOnClickListener(v -> showKeyPicker());
+        keyTools.addView(switchKey, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT));
+
+        TextView newKey = pill("新增密钥", "#1E1A21", "#BFA8A0");
+        newKey.setBackground(round("#1E1A21", "#33F6C56B", 1, 16));
+        newKey.setOnClickListener(v -> {
+            creatingKey = true;
+            keyNoteInput.setText("");
+            keyInput.setText("");
+            keyLabel.setText("新密钥：填写备注和 API Key 后保存");
+            keyInput.requestFocus();
+        });
+        LinearLayout.LayoutParams nklp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        nklp.leftMargin = dp(8);
+        keyTools.addView(newKey, nklp);
+        root.addView(keyTools);
+
+        keyNoteInput = new EditText(this);
+        keyNoteInput.setHint("备注，例如：个人主账号");
+        keyNoteInput.setTextSize(13);
+        keyNoteInput.setTextColor(Color.parseColor("#FFF1DE"));
+        keyNoteInput.setHintTextColor(Color.parseColor("#6E6059"));
+        keyNoteInput.setPadding(dp(14), dp(10), dp(14), dp(10));
+        keyNoteInput.setBackground(round("#1E1A21", "#33F6C56B", 1, 14));
+        keyNoteInput.setSingleLine(true);
+        root.addView(keyNoteInput, cardLp());
+
         LinearLayout keyBox = new LinearLayout(this);
         keyBox.setOrientation(LinearLayout.HORIZONTAL);
         keyBox.setGravity(Gravity.CENTER_VERTICAL);
@@ -333,14 +372,14 @@ public class MainActivity extends Activity {
 
         save.setOnClickListener(v -> {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            String note = keyNoteInput.getText().toString().trim();
             String entered = keyInput.getText().toString().trim();
-            boolean saved = entered.isEmpty()
-                    ? clearApiKey()
-                    : saveApiKey(entered);
+            boolean saved = saveApiKey(note, entered);
             if (!saved) {
-                status.setText("Key 加密保存失败，请重试");
+                status.setText("请输入 API Key，或先选择已有密钥");
                 return;
             }
+            creatingKey = false;
             keyInput.setText("");
             updateKeyLabel();
             fetch();
@@ -545,18 +584,128 @@ public class MainActivity extends Activity {
         return result.toString();
     }
 
-    private void updateKeyLabel() {
-        String k = readApiKey();
-        keyLabel.setText(k == null || k.isEmpty() ? "还没填 API Key" :
-                "已加密保存：" + k.substring(0, Math.min(6, k.length())) + "…" +
-                        k.substring(Math.max(0, k.length() - 4)));
+    private JSONArray loadKeyRecords() {
+        SharedPreferences prefs = getSharedPreferences("prefs", MODE_PRIVATE);
+        String raw = prefs.getString("key_records", "");
+        if (raw != null && !raw.isEmpty()) {
+            try {
+                return new JSONArray(raw);
+            } catch (Exception ignored) {
+            }
+        }
+
+        JSONArray records = new JSONArray();
+        String encrypted = prefs.getString(PREF_KEY_ENC, "");
+        String legacy = prefs.getString(PREF_KEY_LEGACY, "");
+        if ((encrypted == null || encrypted.isEmpty()) && legacy != null && !legacy.isEmpty()) {
+            try {
+                encrypted = encryptSecret(legacy);
+            } catch (Exception ignored) {
+            }
+        }
+        if (encrypted != null && !encrypted.isEmpty()) {
+            try {
+                String id = "legacy-" + System.currentTimeMillis();
+                JSONObject record = new JSONObject();
+                record.put("id", id);
+                record.put("note", "默认密钥");
+                record.put("enc", encrypted);
+                records.put(record);
+                prefs.edit()
+                        .putString("key_records", records.toString())
+                        .putString("selected_key_id", id)
+                        .remove(PREF_KEY_ENC)
+                        .remove(PREF_KEY_LEGACY)
+                        .apply();
+            } catch (Exception ignored) {
+            }
+        }
+        return records;
     }
 
-    private boolean saveApiKey(String key) {
+    private JSONObject selectedKeyRecord(JSONArray records) {
+        if (records == null || records.length() == 0) {
+            return null;
+        }
+        SharedPreferences prefs = getSharedPreferences("prefs", MODE_PRIVATE);
+        String selected = prefs.getString("selected_key_id", "");
+        JSONObject first = null;
+        for (int i = 0; i < records.length(); i++) {
+            try {
+                JSONObject record = records.getJSONObject(i);
+                if (first == null) {
+                    first = record;
+                }
+                if (record.optString("id", "").equals(selected)) {
+                    return record;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (first != null) {
+            prefs.edit().putString("selected_key_id", first.optString("id", "")).apply();
+        }
+        return first;
+    }
+
+    private void updateKeyLabel() {
+        JSONArray records = loadKeyRecords();
+        JSONObject record = selectedKeyRecord(records);
+        if (record == null) {
+            keyLabel.setText("还没填 API Key");
+            if (keyNoteInput != null) {
+                keyNoteInput.setText("");
+            }
+            return;
+        }
+        String note = record.optString("note", "").trim();
+        if (note.isEmpty()) {
+            note = "未命名密钥";
+        }
+        String key = readApiKey();
+        String masked = key == null || key.isEmpty() ? "未填写" :
+                key.substring(0, Math.min(6, key.length())) + "…" +
+                        key.substring(Math.max(0, key.length() - 4));
+        keyLabel.setText("当前：" + note + "  ·  " + masked);
+        if (keyNoteInput != null) {
+            keyNoteInput.setText(note);
+        }
+    }
+
+    private boolean saveApiKey(String note, String key) {
         try {
-            String encrypted = encryptSecret(key);
-            return getSharedPreferences("prefs", MODE_PRIVATE).edit()
-                    .putString(PREF_KEY_ENC, encrypted)
+            SharedPreferences prefs = getSharedPreferences("prefs", MODE_PRIVATE);
+            JSONArray records = loadKeyRecords();
+            String selected = prefs.getString("selected_key_id", "");
+            JSONObject target = null;
+            for (int i = 0; i < records.length(); i++) {
+                JSONObject record = records.getJSONObject(i);
+                if (record.optString("id", "").equals(selected)) {
+                    target = record;
+                    break;
+                }
+            }
+            if (creatingKey || target == null) {
+                String id = "key-" + System.currentTimeMillis();
+                target = new JSONObject();
+                target.put("id", id);
+                target.put("note", note.isEmpty() ? "未命名密钥" : note);
+                if (key.isEmpty()) {
+                    return false;
+                }
+                target.put("enc", encryptSecret(key));
+                records.put(target);
+                selected = id;
+            } else {
+                target.put("note", note.isEmpty() ? "未命名密钥" : note);
+                if (!key.isEmpty()) {
+                    target.put("enc", encryptSecret(key));
+                }
+            }
+            return prefs.edit()
+                    .putString("key_records", records.toString())
+                    .putString("selected_key_id", selected)
+                    .remove(PREF_KEY_ENC)
                     .remove(PREF_KEY_LEGACY)
                     .commit();
         } catch (Exception e) {
@@ -564,34 +713,67 @@ public class MainActivity extends Activity {
         }
     }
 
-    private boolean clearApiKey() {
-        return getSharedPreferences("prefs", MODE_PRIVATE).edit()
-                .remove(PREF_KEY_ENC)
-                .remove(PREF_KEY_LEGACY)
-                .commit();
-    }
-
     private String readApiKey() {
-        SharedPreferences prefs = getSharedPreferences("prefs", MODE_PRIVATE);
-        String encrypted = prefs.getString(PREF_KEY_ENC, "");
-        if (encrypted != null && !encrypted.isEmpty()) {
-            try {
-                return decryptSecret(encrypted);
-            } catch (Exception e) {
-                prefs.edit().remove(PREF_KEY_ENC).apply();
-                return "";
-            }
-        }
-
-        // Migrate the first version that stored the key in plain text.
-        String legacy = prefs.getString(PREF_KEY_LEGACY, "");
-        if (legacy == null || legacy.isEmpty()) {
+        JSONArray records = loadKeyRecords();
+        JSONObject record = selectedKeyRecord(records);
+        if (record == null) {
             return "";
         }
-        if (saveApiKey(legacy)) {
-            return legacy;
+        try {
+            return decryptSecret(record.optString("enc", ""));
+        } catch (Exception e) {
+            return "";
         }
-        return legacy;
+    }
+
+    private void selectKey(String id) {
+        creatingKey = false;
+        getSharedPreferences("prefs", MODE_PRIVATE).edit()
+                .putString("selected_key_id", id).apply();
+        updateKeyLabel();
+        keyInput.setText("");
+        fetch();
+    }
+
+    private void startNewKey() {
+        creatingKey = true;
+        keyNoteInput.setText("");
+        keyInput.setText("");
+        keyLabel.setText("新密钥：填写备注和 API Key 后保存");
+        keyInput.requestFocus();
+    }
+
+    private void showKeyPicker() {
+        JSONArray records = loadKeyRecords();
+        if (records.length() == 0) {
+            startNewKey();
+            return;
+        }
+        final String[] ids = new String[records.length()];
+        String[] labels = new String[records.length()];
+        String selected = getSharedPreferences("prefs", MODE_PRIVATE)
+                .getString("selected_key_id", "");
+        for (int i = 0; i < records.length(); i++) {
+            try {
+                JSONObject record = records.getJSONObject(i);
+                ids[i] = record.optString("id", "");
+                String note = record.optString("note", "未命名密钥");
+                labels[i] = (ids[i].equals(selected) ? "✓ " : "") + note;
+            } catch (Exception e) {
+                ids[i] = "";
+                labels[i] = "未命名密钥";
+            }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("选择密钥")
+                .setItems(labels, (dialog, which) -> {
+                    if (ids[which] != null && !ids[which].isEmpty()) {
+                        selectKey(ids[which]);
+                    }
+                })
+                .setNegativeButton("新增", (dialog, which) -> startNewKey())
+                .setNeutralButton("取消", null)
+                .show();
     }
 
     private SecretKey getOrCreateSecretKey() throws Exception {
