@@ -57,7 +57,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String APP_VERSION = "1.9";
+    private static final String APP_VERSION = "1.9.1";
     private static final String API = "https://api.deepseek.com/user/balance";
     private static final String CACHE_URL = "http://127.0.0.1:8765/cache?scope=today";
     private static final String KEY_ALIAS = "token_monitor_api_key_v1";
