@@ -18,7 +18,6 @@
 - 支持保存多个 API Key，可为每个 Key 添加备注并切换
 - 支持 DeepSeek、Kimi、GPT、Claude、Gemini、GLM、Qwen、Grok 供应商配置
 - DeepSeek/Kimi 显示余额；GPT/Claude/Gemini/GLM/Qwen/Grok 使用普通 Key 做连接和模型数量检查
-- 供应商和密钥选择使用二次元角色头像卡片
 - 本机桥接只读取 token 计数，不读取聊天正文
 
 ## 架构
