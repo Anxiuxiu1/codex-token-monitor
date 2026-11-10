@@ -29,4 +29,5 @@ install-cache-autostart.ps1
 install-cache-autostart.cmd
 install-cache-autostart-reg.cmd
 make-icon.py
+make-avatars.py
 run-cache-bridge.vbs

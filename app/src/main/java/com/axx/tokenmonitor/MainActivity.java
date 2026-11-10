@@ -1,7 +1,6 @@
 package com.axx.tokenmonitor;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -25,6 +24,7 @@ import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.Window;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -57,7 +57,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String APP_VERSION = "1.6";
+    private static final String APP_VERSION = "1.7";
     private static final String API = "https://api.deepseek.com/user/balance";
     private static final String CACHE_URL = "http://127.0.0.1:8765/cache?scope=today";
     private static final String KEY_ALIAS = "token_monitor_api_key_v1";
@@ -522,6 +522,17 @@ public class MainActivity extends Activity {
         return v;
     }
 
+    private ImageView providerAvatar(String provider) {
+        ImageView image = new ImageView(this);
+        String resource = "avatar_" + provider.toLowerCase(Locale.US);
+        int id = getResources().getIdentifier(resource, "drawable", getPackageName());
+        image.setImageResource(id != 0 ? id
+                : getResources().getIdentifier("app_icon", "drawable", getPackageName()));
+        image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        image.setContentDescription(provider + " 头像");
+        return image;
+    }
+
     private GradientDrawable round(String fill, String stroke, int strokeDp, int radiusDp) {
         GradientDrawable d = new GradientDrawable();
         d.setColor(Color.parseColor(fill));
@@ -774,45 +785,147 @@ public class MainActivity extends Activity {
             startNewKey();
             return;
         }
-        final String[] ids = new String[records.length()];
-        String[] labels = new String[records.length()];
         String selected = getSharedPreferences("prefs", MODE_PRIVATE)
                 .getString("selected_key_id", "");
+
+        Dialog dialog = new Dialog(this);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(20), dp(19), dp(20), dp(14));
+        panel.setBackground(round("#221E27", "#66F6C56B", 1, 22));
+
+        LinearLayout head = new LinearLayout(this);
+        head.setOrientation(LinearLayout.HORIZONTAL);
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text("选择密钥", 20, "#FFF1DE");
+        head.addView(title, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        TextView close = text("取消", 12, "#8A7A72");
+        close.setPadding(dp(8), dp(7), 0, dp(7));
+        close.setOnClickListener(v -> dialog.dismiss());
+        head.addView(close);
+        panel.addView(head);
+
+        TextView subtitle = text("选中后立即切换余额和缓存统计来源", 11, "#8A7A72");
+        subtitle.setPadding(0, dp(5), 0, dp(14));
+        panel.addView(subtitle);
+
         for (int i = 0; i < records.length(); i++) {
             try {
                 JSONObject record = records.getJSONObject(i);
-                ids[i] = record.optString("id", "");
-                String note = record.optString("note", "未命名密钥");
+                String id = record.optString("id", "");
+                String note = record.optString("note", "");
+                if (note.isEmpty()) {
+                    note = "未命名密钥";
+                }
                 String provider = record.optString("provider", "DeepSeek");
-                labels[i] = (ids[i].equals(selected) ? "✓ " : "") + note + " · " + provider;
-            } catch (Exception e) {
-                ids[i] = "";
-                labels[i] = "未命名密钥";
+                boolean current = id.equals(selected);
+                String masked = "不可读取";
+                try {
+                    String key = decryptSecret(record.optString("enc", ""));
+                    masked = key.substring(0, Math.min(5, key.length())) + "…" +
+                            key.substring(Math.max(0, key.length() - 4));
+                } catch (Exception ignored) {
+                }
+
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(13), dp(11), dp(13), dp(11));
+                row.setBackground(round(
+                        current ? "#2B242D" : "#1E1A21",
+                        current ? "#66F6C56B" : "#22F6C56B", 1, 17));
+
+                ImageView avatar = providerAvatar(provider);
+                row.addView(avatar, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+                LinearLayout info = new LinearLayout(this);
+                info.setOrientation(LinearLayout.VERTICAL);
+                info.setPadding(dp(12), 0, dp(8), 0);
+                TextView keyNote = text(note, 14, "#FFF1DE");
+                info.addView(keyNote);
+                TextView detail = text(provider + "  ·  " + masked, 10, "#8A7A72");
+                detail.setPadding(0, dp(4), 0, 0);
+                info.addView(detail);
+                row.addView(info, new LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+                TextView state = text(current ? "✓" : "›", 17,
+                        current ? "#F6C56B" : "#6E6059");
+                state.setGravity(Gravity.CENTER);
+                row.addView(state, new LinearLayout.LayoutParams(
+                        dp(26), LinearLayout.LayoutParams.WRAP_CONTENT));
+
+                row.setOnClickListener(v -> {
+                    v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                    selectKey(id);
+                    dialog.dismiss();
+                });
+                LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+                rowLp.bottomMargin = dp(8);
+                panel.addView(row, rowLp);
+            } catch (Exception ignored) {
             }
         }
-        new AlertDialog.Builder(this)
-                .setTitle("选择密钥")
-                .setItems(labels, (dialog, which) -> {
-                    if (ids[which] != null && !ids[which].isEmpty()) {
-                        selectKey(ids[which]);
-                    }
-                })
-                .setNegativeButton("新增", (dialog, which) -> startNewKey())
-                .setNeutralButton("取消", null)
-                .show();
+
+        LinearLayout addRow = new LinearLayout(this);
+        addRow.setOrientation(LinearLayout.HORIZONTAL);
+        addRow.setGravity(Gravity.CENTER_VERTICAL);
+        addRow.setPadding(dp(13), dp(10), dp(13), dp(10));
+        addRow.setBackground(round("#1E1A21", "#33F6C56B", 1, 17));
+        TextView plus = text("+", 22, "#F6C56B");
+        plus.setGravity(Gravity.CENTER);
+        plus.setBackground(round("#2A241E", "#55F6C56B", 1, 16));
+        addRow.addView(plus, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        TextView addLabel = text("新增密钥", 13, "#FFF1DE");
+        addLabel.setPadding(dp(12), 0, 0, 0);
+        addRow.addView(addLabel, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        addRow.setOnClickListener(v -> {
+            startNewKey();
+            dialog.dismiss();
+        });
+        panel.addView(addRow);
+
+        TextView note = text("密钥使用 Android Keystore 加密，仅保存在本机。",
+                10, "#6E6059");
+        note.setPadding(dp(2), dp(11), 0, dp(2));
+        panel.addView(note);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.addView(panel);
+        dialog.setContentView(scroll);
+        dialog.setCanceledOnTouchOutside(true);
+        dialog.show();
+
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.setDimAmount(0.72f);
+            window.setGravity(Gravity.CENTER);
+            int width = Math.min(dp(520),
+                    Math.round(getResources().getDisplayMetrics().widthPixels * 0.88f));
+            window.setLayout(width, LinearLayout.LayoutParams.WRAP_CONTENT);
+        }
     }
 
     private void showProviderPicker() {
-        final String[] providers = {"DeepSeek", "Kimi", "GPT", "Claude", "Gemini"};
+        final String[] providers = {
+                "DeepSeek", "Kimi", "GPT", "Claude", "Gemini", "GLM", "Qwen", "Grok"
+        };
         final String[] descriptions = {
                 "余额查询  ·  Codex 缓存统计",
                 "余额查询  ·  Codex 缓存统计",
                 "连接检查  ·  模型列表",
                 "连接检查  ·  模型列表",
+                "连接检查  ·  模型列表",
+                "连接检查  ·  模型列表",
+                "连接检查  ·  模型列表",
                 "连接检查  ·  模型列表"
         };
-        final String[] badges = {"DS", "K", "GPT", "C", "G"};
-        final String[] colors = {"#F6C56B", "#F06A5B", "#B7A1FF", "#E6A16B", "#7CB7FF"};
         final String current = providerValue.getText().toString();
 
         Dialog dialog = new Dialog(this);
@@ -848,11 +961,8 @@ public class MainActivity extends Activity {
                     selected ? "#2B242D" : "#1E1A21",
                     selected ? "#66F6C56B" : "#22F6C56B", 1, 17));
 
-            TextView badge = text(badges[i], 10, "#17141B");
-            badge.setGravity(Gravity.CENTER);
-            badge.setSingleLine(true);
-            badge.setBackground(round(colors[i], null, 0, 12));
-            row.addView(badge, new LinearLayout.LayoutParams(dp(40), dp(36)));
+            ImageView avatar = providerAvatar(name);
+            row.addView(avatar, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
             LinearLayout info = new LinearLayout(this);
             info.setOrientation(LinearLayout.VERTICAL);
@@ -1351,6 +1461,19 @@ public class MainActivity extends Activity {
                             "https://generativelanguage.googleapis.com/v1beta/models",
                             "x-goog-api-key", key);
                     modelCount = countModels(o, "models");
+                } else if ("GLM".equals(provider)) {
+                    JSONObject o = getJson("https://open.bigmodel.cn/api/paas/v4/models",
+                            "Authorization", "Bearer " + key);
+                    modelCount = countModels(o, "data");
+                } else if ("Qwen".equals(provider)) {
+                    JSONObject o = getJson(
+                            "https://dashscope.aliyuncs.com/compatible-mode/v1/models",
+                            "Authorization", "Bearer " + key);
+                    modelCount = countModels(o, "data");
+                } else if ("Grok".equals(provider)) {
+                    JSONObject o = getJson("https://api.x.ai/v1/models",
+                            "Authorization", "Bearer " + key);
+                    modelCount = countModels(o, "data");
                 } else {
                     err = "未知供应商：" + provider;
                 }
