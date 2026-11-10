@@ -57,7 +57,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String APP_VERSION = "1.7";
+    private static final String APP_VERSION = "1.8";
     private static final String API = "https://api.deepseek.com/user/balance";
     private static final String CACHE_URL = "http://127.0.0.1:8765/cache?scope=today";
     private static final String KEY_ALIAS = "token_monitor_api_key_v1";
@@ -67,7 +67,7 @@ public class MainActivity extends Activity {
     private final Handler h = new Handler(Looper.getMainLooper());
     private TextView big, sub, status, keyLabel;
     private TextView warn, today, average, forecast, toppedValue, grantedValue;
-    private TextView cacheTitle, cacheDetail, cacheMeta;
+    private TextView cacheTitle, cacheDetail, cacheMeta, cacheTokens;
     private TextView historySummary;
     private LinearLayout historyList;
     private TextView cacheLanValue;
@@ -270,6 +270,9 @@ public class MainActivity extends Activity {
         cacheDetail = text("等待本机统计源", 11, "#BFA8A0");
         cacheDetail.setPadding(0, dp(7), 0, 0);
         cacheInfo.addView(cacheDetail);
+        cacheTokens = text("当前范围 tokens —", 16, "#FFF1DE");
+        cacheTokens.setPadding(0, dp(7), 0, 0);
+        cacheInfo.addView(cacheTokens);
         cacheMeta = text("只读 token 计数，不读取对话内容", 10, "#8A7A72");
         cacheMeta.setPadding(0, dp(7), 0, 0);
         cacheInfo.addView(cacheMeta);
@@ -1237,7 +1240,7 @@ public class MainActivity extends Activity {
             String err = null;
             String scope = "today";
             double rate = 0;
-            long cached = 0, input = 0;
+            long cached = 0, input = 0, output = 0, total = 0, uncached = 0;
             int samples = 0;
             String lanUrl = "";
             String configured = getSharedPreferences("prefs", MODE_PRIVATE)
@@ -1263,6 +1266,10 @@ public class MainActivity extends Activity {
                     rate = o.optDouble("cache_hit_rate", 0);
                     cached = o.optLong("cached_input_tokens", 0);
                     input = o.optLong("input_tokens", 0);
+                    output = o.optLong("output_tokens", 0);
+                    total = o.optLong("total_tokens", input + output);
+                    uncached = o.optLong("uncached_input_tokens",
+                            Math.max(0, input - cached));
                     samples = o.optInt("sample_count", 0);
                     scope = o.optString("scope", queryScope);
                     lanUrl = o.optString("lan_url", "");
@@ -1288,6 +1295,10 @@ public class MainActivity extends Activity {
                         rate = o.optDouble("cache_hit_rate", 0);
                         cached = o.optLong("cached_input_tokens", 0);
                         input = o.optLong("input_tokens", 0);
+                        output = o.optLong("output_tokens", 0);
+                        total = o.optLong("total_tokens", input + output);
+                        uncached = o.optLong("uncached_input_tokens",
+                                Math.max(0, input - cached));
                         samples = o.optInt("sample_count", 0);
                         scope = o.optString("scope", queryScope);
                         lanUrl = o.optString("lan_url", "");
@@ -1316,7 +1327,7 @@ public class MainActivity extends Activity {
             }
             final String ferr = err;
             final double fr = rate;
-            final long fc = cached, fi = input;
+            final long fc = cached, fi = input, fo = output, ft = total, fu = uncached;
             final int fs = samples;
             final String fsco = scope;
             final String flan = lanUrl;
@@ -1325,6 +1336,7 @@ public class MainActivity extends Activity {
                     diagLog("CACHE_UI_OFFLINE reason=" + ferr);
                     cacheRing.setRate(0, false);
                     cacheDetail.setText("未连接本机统计源");
+                    cacheTokens.setText("当前范围 tokens —");
                     cacheMeta.setText(ferr);
                     cacheLanValue.setText("当前电脑局域网地址：—");
                     return;
@@ -1340,8 +1352,9 @@ public class MainActivity extends Activity {
                 cacheRing.setRate(fr, true);
                 cacheDetail.setText(String.format(Locale.getDefault(),
                         "命中 %.1f%%  ·  %s 次请求", fr, fs));
-                cacheMeta.setText("节省 " + shortNum(fc) + " / 输入 " +
-                        shortNum(fi) + " tokens");
+                cacheTokens.setText(label + " tokens  " + shortNum(ft));
+                cacheMeta.setText("输入 " + shortNum(fi) + "  ·  输出 " + shortNum(fo)
+                        + "  ·  缓存 " + shortNum(fc) + "  ·  未命中 " + shortNum(fu));
             });
         }).start();
     }

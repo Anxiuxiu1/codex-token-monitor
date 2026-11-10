@@ -128,6 +128,8 @@ def collect_usage(scope="today"):
     rate = total_cached / total_input * 100 if total_input else 0
     return {
         "cache_hit_rate": round(rate, 2),
+        "total_tokens": total_input + total_output,
+        "uncached_input_tokens": max(0, total_input - total_cached),
         "cached_input_tokens": total_cached,
         "input_tokens": total_input,
         "output_tokens": total_output,
