@@ -57,7 +57,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String APP_VERSION = "1.8";
+    private static final String APP_VERSION = "1.9";
     private static final String API = "https://api.deepseek.com/user/balance";
     private static final String CACHE_URL = "http://127.0.0.1:8765/cache?scope=today";
     private static final String KEY_ALIAS = "token_monitor_api_key_v1";
@@ -834,16 +834,22 @@ public class MainActivity extends Activity {
                 LinearLayout row = new LinearLayout(this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setBaselineAligned(false);
+                row.setMinimumHeight(dp(72));
                 row.setPadding(dp(13), dp(11), dp(13), dp(11));
                 row.setBackground(round(
                         current ? "#2B242D" : "#1E1A21",
                         current ? "#66F6C56B" : "#22F6C56B", 1, 17));
 
                 ImageView avatar = providerAvatar(provider);
-                row.addView(avatar, new LinearLayout.LayoutParams(dp(48), dp(48)));
+                LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(
+                        dp(48), dp(48));
+                avatarLp.gravity = Gravity.CENTER_VERTICAL;
+                row.addView(avatar, avatarLp);
 
                 LinearLayout info = new LinearLayout(this);
                 info.setOrientation(LinearLayout.VERTICAL);
+                info.setGravity(Gravity.CENTER_VERTICAL);
                 info.setPadding(dp(12), 0, dp(8), 0);
                 TextView keyNote = text(note, 14, "#FFF1DE");
                 info.addView(keyNote);
@@ -959,16 +965,22 @@ public class MainActivity extends Activity {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setBaselineAligned(false);
+            row.setMinimumHeight(dp(72));
             row.setPadding(dp(13), dp(11), dp(13), dp(11));
             row.setBackground(round(
                     selected ? "#2B242D" : "#1E1A21",
                     selected ? "#66F6C56B" : "#22F6C56B", 1, 17));
 
             ImageView avatar = providerAvatar(name);
-            row.addView(avatar, new LinearLayout.LayoutParams(dp(48), dp(48)));
+            LinearLayout.LayoutParams avatarLp = new LinearLayout.LayoutParams(
+                    dp(48), dp(48));
+            avatarLp.gravity = Gravity.CENTER_VERTICAL;
+            row.addView(avatar, avatarLp);
 
             LinearLayout info = new LinearLayout(this);
             info.setOrientation(LinearLayout.VERTICAL);
+            info.setGravity(Gravity.CENTER_VERTICAL);
             info.setPadding(dp(12), 0, dp(8), 0);
             TextView providerName = text(name, 14, "#FFF1DE");
             info.addView(providerName);
