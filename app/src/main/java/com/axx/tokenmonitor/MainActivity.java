@@ -54,7 +54,7 @@ import java.util.Date;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final String APP_VERSION = "1.4";
+    private static final String APP_VERSION = "1.5";
     private static final String API = "https://api.deepseek.com/user/balance";
     private static final String CACHE_URL = "http://127.0.0.1:8765/cache?scope=today";
     private static final String KEY_ALIAS = "token_monitor_api_key_v1";
@@ -73,6 +73,7 @@ public class MainActivity extends Activity {
     private Ring cacheRing;
     private EditText keyInput;
     private EditText keyNoteInput;
+    private TextView providerValue;
     private EditText cacheUrlInput;
     private String cacheLanUrl = "";
     private File diagFile;
@@ -324,19 +325,26 @@ public class MainActivity extends Activity {
 
         TextView newKey = pill("新增密钥", "#1E1A21", "#BFA8A0");
         newKey.setBackground(round("#1E1A21", "#33F6C56B", 1, 16));
-        newKey.setOnClickListener(v -> {
-            creatingKey = true;
-            keyNoteInput.setText("");
-            keyInput.setText("");
-            keyLabel.setText("新密钥：填写备注和 API Key 后保存");
-            keyInput.requestFocus();
-        });
+        newKey.setOnClickListener(v -> startNewKey());
         LinearLayout.LayoutParams nklp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT);
         nklp.leftMargin = dp(8);
         keyTools.addView(newKey, nklp);
         root.addView(keyTools);
+
+        LinearLayout providerRow = new LinearLayout(this);
+        providerRow.setOrientation(LinearLayout.HORIZONTAL);
+        providerRow.setGravity(Gravity.CENTER_VERTICAL);
+        providerRow.setPadding(0, 0, 0, dp(9));
+        TextView providerLabel = text("供应商", 11, "#8A7A72");
+        providerRow.addView(providerLabel, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        providerValue = pill("DeepSeek", "#1E1A21", "#F6C56B");
+        providerValue.setBackground(round("#1E1A21", "#66F6C56B", 1, 16));
+        providerValue.setOnClickListener(v -> showProviderPicker());
+        providerRow.addView(providerValue);
+        root.addView(providerRow);
 
         keyNoteInput = new EditText(this);
         keyNoteInput.setHint("备注，例如：个人主账号");
@@ -374,7 +382,7 @@ public class MainActivity extends Activity {
             v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             String note = keyNoteInput.getText().toString().trim();
             String entered = keyInput.getText().toString().trim();
-            boolean saved = saveApiKey(note, entered);
+            boolean saved = saveApiKey(note, entered, selectedProvider());
             if (!saved) {
                 status.setText("请输入 API Key，或先选择已有密钥");
                 return;
@@ -609,6 +617,7 @@ public class MainActivity extends Activity {
                 JSONObject record = new JSONObject();
                 record.put("id", id);
                 record.put("note", "默认密钥");
+                record.put("provider", "DeepSeek");
                 record.put("enc", encrypted);
                 records.put(record);
                 prefs.edit()
@@ -667,12 +676,15 @@ public class MainActivity extends Activity {
                 key.substring(0, Math.min(6, key.length())) + "…" +
                         key.substring(Math.max(0, key.length() - 4));
         keyLabel.setText("当前：" + note + "  ·  " + masked);
+        if (providerValue != null) {
+            providerValue.setText(record.optString("provider", "DeepSeek"));
+        }
         if (keyNoteInput != null) {
             keyNoteInput.setText(note);
         }
     }
 
-    private boolean saveApiKey(String note, String key) {
+    private boolean saveApiKey(String note, String key, String provider) {
         try {
             SharedPreferences prefs = getSharedPreferences("prefs", MODE_PRIVATE);
             JSONArray records = loadKeyRecords();
@@ -690,6 +702,7 @@ public class MainActivity extends Activity {
                 target = new JSONObject();
                 target.put("id", id);
                 target.put("note", note.isEmpty() ? "未命名密钥" : note);
+                target.put("provider", provider);
                 if (key.isEmpty()) {
                     return false;
                 }
@@ -698,6 +711,7 @@ public class MainActivity extends Activity {
                 selected = id;
             } else {
                 target.put("note", note.isEmpty() ? "未命名密钥" : note);
+                target.put("provider", provider);
                 if (!key.isEmpty()) {
                     target.put("enc", encryptSecret(key));
                 }
@@ -711,6 +725,13 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private String selectedProvider() {
+        if (providerValue != null) {
+            return providerValue.getText().toString();
+        }
+        return "DeepSeek";
     }
 
     private String readApiKey() {
@@ -739,6 +760,7 @@ public class MainActivity extends Activity {
         creatingKey = true;
         keyNoteInput.setText("");
         keyInput.setText("");
+        providerValue.setText("DeepSeek");
         keyLabel.setText("新密钥：填写备注和 API Key 后保存");
         keyInput.requestFocus();
     }
@@ -758,7 +780,8 @@ public class MainActivity extends Activity {
                 JSONObject record = records.getJSONObject(i);
                 ids[i] = record.optString("id", "");
                 String note = record.optString("note", "未命名密钥");
-                labels[i] = (ids[i].equals(selected) ? "✓ " : "") + note;
+                String provider = record.optString("provider", "DeepSeek");
+                labels[i] = (ids[i].equals(selected) ? "✓ " : "") + note + " · " + provider;
             } catch (Exception e) {
                 ids[i] = "";
                 labels[i] = "未命名密钥";
@@ -773,6 +796,16 @@ public class MainActivity extends Activity {
                 })
                 .setNegativeButton("新增", (dialog, which) -> startNewKey())
                 .setNeutralButton("取消", null)
+                .show();
+    }
+
+    private void showProviderPicker() {
+        final String[] providers = {"DeepSeek", "Kimi", "GPT", "Claude", "Gemini"};
+        new AlertDialog.Builder(this)
+                .setTitle("选择 API 供应商")
+                .setItems(providers, (dialog, which) ->
+                        providerValue.setText(providers[which]))
+                .setNegativeButton("取消", null)
                 .show();
     }
 
@@ -1173,50 +1206,85 @@ public class MainActivity extends Activity {
 
     private void fetch() {
         final String key = readApiKey();
+        final String provider = selectedProvider();
         if (key == null || key.isEmpty()) {
             status.setText("先在下面填 API Key 并保存");
             return;
         }
-        status.setText("刷新中…");
+        status.setText(provider + " 正在检查…");
         new Thread(() -> {
             long started = System.currentTimeMillis();
-            String err = null, total = null, granted = null, topped = null, cur = null;
+            String err = null, total = null, granted = null, topped = null, cur = "CNY";
+            boolean hasBalance = false;
+            int modelCount = -1;
             try {
-                HttpURLConnection c = (HttpURLConnection) new URL(API).openConnection();
-                c.setRequestMethod("GET");
-                c.setRequestProperty("Authorization", "Bearer " + key);
-                c.setRequestProperty("Accept", "application/json");
-                c.setConnectTimeout(10000);
-                c.setReadTimeout(15000);
-                int code = c.getResponseCode();
-                InputStream is = code >= 400 ? c.getErrorStream() : c.getInputStream();
-                String body = read(is);
-                if (code != 200) {
-                    err = "HTTP " + code + " " + body;
-                } else {
-                    JSONObject o = new JSONObject(body);
+                if ("Kimi".equals(provider)) {
+                    JSONObject o = getJson(
+                            "https://api.moonshot.cn/v1/users/me/balance",
+                            "Authorization", "Bearer " + key);
+                    JSONObject d = o.optJSONObject("data");
+                    if (d == null) {
+                        throw new IllegalStateException("余额响应缺少 data");
+                    }
+                    total = String.valueOf(d.optDouble("available_balance", 0));
+                    granted = String.valueOf(d.optDouble("voucher_balance", 0));
+                    topped = String.valueOf(d.optDouble("cash_balance", 0));
+                    hasBalance = true;
+                } else if ("DeepSeek".equals(provider)) {
+                    JSONObject o = getJson(API,
+                            "Authorization", "Bearer " + key);
                     JSONArray a = o.optJSONArray("balance_infos");
                     JSONObject f = (a != null && a.length() > 0) ? a.getJSONObject(0) : o;
-                    cur = f.optString("currency", "");
+                    cur = f.optString("currency", "CNY");
                     total = f.optString("total_balance", "?");
                     granted = f.optString("granted_balance", "");
                     topped = f.optString("topped_up_balance", "");
+                    hasBalance = true;
+                } else if ("GPT".equals(provider)) {
+                    JSONObject o = getJson("https://api.openai.com/v1/models",
+                            "Authorization", "Bearer " + key);
+                    modelCount = countModels(o, "data");
+                } else if ("Claude".equals(provider)) {
+                    JSONObject o = getJson("https://api.anthropic.com/v1/models",
+                            "x-api-key", key,
+                            "anthropic-version", "2023-06-01");
+                    modelCount = countModels(o, "data");
+                } else if ("Gemini".equals(provider)) {
+                    JSONObject o = getJson(
+                            "https://generativelanguage.googleapis.com/v1beta/models",
+                            "x-goog-api-key", key);
+                    modelCount = countModels(o, "models");
+                } else {
+                    err = "未知供应商：" + provider;
                 }
             } catch (Exception e) {
                 err = e.getClass().getSimpleName() + ": " + e.getMessage();
             }
             final String ferr = err, ft = total, fg = granted, fto = topped, fc = cur;
+            final boolean fbal = hasBalance;
+            final int fmc = modelCount;
             final long latency = Math.max(1, System.currentTimeMillis() - started);
             h.post(() -> {
                 if (ferr != null) {
                     status.setText("出错：" + ferr);
                     return;
                 }
+                if (!fbal) {
+                    big.setText("—");
+                    big.setTextColor(Color.parseColor("#8A7A72"));
+                    sub.setText(provider + " 已连接" +
+                            (fmc >= 0 ? "  ·  模型 " + fmc + " 个" : ""));
+                    status.setText("普通 API Key 不支持余额查询  ·  连接 "
+                            + latency + " ms");
+                    warn.setVisibility(View.GONE);
+                    return;
+                }
                 String sym = "CNY".equals(fc) ? "¥ " : (fc + " ");
                 big.setText(sym + ft);
                 try {
                     double v = Double.parseDouble(ft);
-                    big.setTextColor(v < 10 ? Color.parseColor("#F06A5B") : Color.parseColor("#FFF1DE"));
+                    big.setTextColor(v < 10 ? Color.parseColor("#F06A5B")
+                            : Color.parseColor("#FFF1DE"));
                 } catch (Exception ignored) {
                 }
                 sub.setText("充值余额 " + fto + "    赠送余额 " + fg);
@@ -1235,6 +1303,33 @@ public class MainActivity extends Activity {
                 }
             });
         }).start();
+    }
+
+    private JSONObject getJson(String address, String... headers) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(address).openConnection();
+        c.setRequestMethod("GET");
+        c.setRequestProperty("Accept", "application/json");
+        for (int i = 0; i + 1 < headers.length; i += 2) {
+            c.setRequestProperty(headers[i], headers[i + 1]);
+        }
+        c.setConnectTimeout(10000);
+        c.setReadTimeout(15000);
+        try {
+            int code = c.getResponseCode();
+            InputStream is = code >= 400 ? c.getErrorStream() : c.getInputStream();
+            String body = read(is);
+            if (code != 200) {
+                throw new IOException("HTTP " + code + " " + body);
+            }
+            return new JSONObject(body);
+        } finally {
+            c.disconnect();
+        }
+    }
+
+    private int countModels(JSONObject object, String key) {
+        JSONArray array = object.optJSONArray(key);
+        return array == null ? -1 : array.length();
     }
 
     static class Ring extends View {
